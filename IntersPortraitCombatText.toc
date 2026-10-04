@@ -1,0 +1,21 @@
+## Interface: 16001
+## Title: Inter's Portrait Combat Text
+## Notes: Damage, heals and misses flash on a spot you place, as they did on the original portrait. /pct
+## Author: Michael Cassidy
+## Version: @project-version@
+## X-License: GPL-3.0-or-later
+## X-Website: https://github.com/cassidymichael/IntersPortraitCombatText
+## X-Curse-Project-ID: 1725945
+## SavedVariables: IntersPortraitCombatTextDB
+## OptionalDeps: LibSharedMedia-3.0, SharedMedia
+## IconTexture: Interface\AddOns\IntersPortraitCombatText\Art\Logo
+
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
+IntersPortraitCombatText.lua
+Positioning.lua
+Slider.lua
+Slider.xml
+Options.lua

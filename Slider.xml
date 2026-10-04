@@ -1,0 +1,3 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Frame name="IntersPortraitCombatTextSliderTemplate" inherits="SettingsSliderControlTemplate" mixin="IntersPortraitCombatTextSliderMixin" virtual="true"/>
+</Ui>

@@ -1,0 +1,28 @@
+name: Bug report
+description: Something in Inter's Portrait Combat Text doesn't work.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Addon version
+      description: In the game's addon list.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen
+      description: In combat or out? In a dungeon or the open world? Which box (player, target, pet)?
+  - type: textarea
+    id: errors
+    attributes:
+      label: Lua errors
+      description: The error text (from BugSack, for example).
+      render: text
