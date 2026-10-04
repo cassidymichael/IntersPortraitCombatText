@@ -412,6 +412,7 @@ local function buildGeneral(p)
 	p:checkbox("Plus and minus signs", getter("signs"), setter("signs", nil, true))
 
 	p:section("Other")
+	p:checkbox("Hide the game's own portrait text", getter("hideDefault"), setter("hideDefault"))
 	p:checkbox("Minimap button", function() return not ns.acct.minimap.hide end, function(value)
 		ns.acct.minimap.hide = not value
 		ns.applyMinimap()

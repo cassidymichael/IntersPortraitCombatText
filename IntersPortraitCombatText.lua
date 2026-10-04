@@ -12,7 +12,7 @@ local UNITS = {
 local DEFAULTS = {
 	font = "", outline = "OUTLINE", shadow = false, alpha = 1, hold = 0.7, crit = 1.5,
 	damage = true, heals = true, avoids = true, gains = true, minDamage = 0, minHeal = 0, minGain = 0,
-	numbers = "FULL", signs = false, schools = false,
+	numbers = "FULL", signs = false, schools = false, hideDefault = false,
 	colorPhysical = "ffffffff", colorSpell = "ffffff00", colorHeal = "ff00ff00", colorGain = "ff69ccf0",
 	colorAvoid = "ffffffff",
 }
@@ -331,7 +331,21 @@ function ns.sample()
 	end
 end
 
+-- The game's own text on the default player and pet frames, hidden as it shows
+local hooked
+local function hideDefault(text)
+	if db.hideDefault then text:Hide() end
+end
+
+local function applyDefaultText()
+	if hooked or not db.hideDefault then return end
+	hooked = true
+	hooksecurefunc(_G.PlayerFrame.PlayerFrameContent.PlayerFrameContentMain.HitIndicator.HitText, "Show", hideDefault)
+	hooksecurefunc(_G.PetHitIndicator, "Show", hideDefault)
+end
+
 function ns.apply()
+	applyDefaultText()
 	for key in pairs(DEFAULTS) do
 		if key:find("^color") then
 			local hex = db[key]

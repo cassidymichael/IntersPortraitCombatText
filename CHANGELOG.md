@@ -4,6 +4,7 @@
 
 - The options are now the addon's own window, opened with /pct or the minimap button, in place of
   pages in the game's settings.
+- An option to hide the game's own portrait text on the default player and pet frames.
 
 ## 1.0.0 (2026-10-04)
 
