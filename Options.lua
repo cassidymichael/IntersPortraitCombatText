@@ -540,16 +540,26 @@ local function build()
 	navEdge:SetPoint("BOTTOMLEFT", navBg, "BOTTOMRIGHT")
 	navEdge:SetWidth(1)
 	navEdge:SetColorTexture(0.23, 0.17, 0.10, 1)
-	local logo = win:CreateTexture(nil, "OVERLAY")
-	logo:SetSize(64, 64)
-	logo:SetPoint("TOPLEFT", -12, 14)
-	logo:SetTexture("Interface\\AddOns\\" .. ADDON .. "\\Art\\Logo")
+	-- A badge over the corner, on its own frame above the window's border (the border's level is 500)
+	local logo = CreateFrame("Frame", nil, win)
+	logo:SetSize(76, 76)
+	logo:SetPoint("TOPLEFT", win, "TOPLEFT", -18, 20)
+	logo:SetFrameLevel(600)
+	local LOGO = "Interface\\AddOns\\" .. ADDON .. "\\Art\\Logo"
+	local shadow = logo:CreateTexture(nil, "BACKGROUND")
+	shadow:SetTexture(LOGO)
+	shadow:SetVertexColor(0, 0, 0, 0.7)
+	shadow:SetPoint("TOPLEFT", 3, -4)
+	shadow:SetPoint("BOTTOMRIGHT", 3, -4)
+	local face = logo:CreateTexture(nil, "ARTWORK")
+	face:SetTexture(LOGO)
+	face:SetAllPoints()
 
 	pages, navButtons = {}, {}
 	for i, spec in ipairs({ { "general", "General", buildGeneral }, { "events", "Events", buildEvents },
 		{ "profiles", "Profiles", buildProfiles } }) do
 		spec[3](newPage(spec[1], spec[2]))
-		local b = navButton(spec[2], -52 - (i - 1) * 30, function() showPage(spec[1]) end)
+		local b = navButton(spec[2], -66 - (i - 1) * 30, function() showPage(spec[1]) end)
 		b.page = spec[1]
 		navButtons[i] = b
 	end
