@@ -343,6 +343,20 @@ function ns.apply()
 	syncNudger()
 end
 
+-- A setting changed in the options. unit: a box's own setting, or nil for the profile's.
+-- look: the change shows on a sample
+function ns.set(unit, key, value, look)
+	local range = RANGES[key]
+	if range then
+		value = math.floor(value / range[3] + 0.5) * range[3]
+		value = clamp(tonumber(("%.2f"):format(value)), range)
+	end
+	local owner = unit and db[unit] or db
+	owner[key] = value
+	ns.apply()
+	if look then ns.sample() end
+end
+
 -- The box the arrow keys move
 function ns.select(f)
 	selected = f
@@ -637,7 +651,6 @@ loader:SetScript("OnEvent", function(_, event)
 	local saved = acct.chars[charKey()]
 	ns.useProfile(saved and saved.profile or DEFAULT_PROFILE)
 	ns.applyMinimap()
-	ns.buildOptions()
 	_G["SLASH_" .. ADDON:upper() .. "1"] = "/pct"
 	_G["SLASH_" .. ADDON:upper() .. "2"] = "/ipct"
 	SlashCmdList[ADDON:upper()] = command

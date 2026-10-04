@@ -1,13 +1,12 @@
--- The options page in the game's settings window.
+-- The options window: a nav column and scrolling pages of rows.
 local ADDON, ns = ...
 
-local category
-local variables = {}
+local WIDTH, HEIGHT, NAV_W = 700, 560, 170
+local LABEL_W, ROW_W = 180, WIDTH - NAV_W - 64
+local SLIDER_W, BOX_W = 200, 52
+local GOLD = { 0.88, 0.66, 0.29 }
 
--- The page reads every setting again
-function ns.profileChanged()
-	for _, variable in ipairs(variables) do Settings.NotifyUpdate(variable) end
-end
+local win, pages, navButtons, current
 
 -- Popups
 
@@ -182,190 +181,414 @@ local function showShare(mode)
 	if mode == "export" then f.edit:HighlightText() end
 end
 
-function ns.openOptions()
-	Settings.OpenToCategory(category:GetID())
+
+-- Pages: rows stacked down a scrolling column, each with a function that shows its value again
+
+local Page = {}
+Page.__index = Page
+
+local function newPage(key, title)
+	local ok, scroll = pcall(CreateFrame, "ScrollFrame", nil, win, "ScrollFrameTemplate")
+	if ok and scroll and scroll.ScrollBar then
+		if scroll.ScrollBar.SetHideIfUnscrollable then scroll.ScrollBar:SetHideIfUnscrollable(true) end
+		scroll.ScrollBar:ClearAllPoints()
+		scroll.ScrollBar:SetPoint("TOPLEFT", scroll, "TOPRIGHT", 14, 0)
+		scroll.ScrollBar:SetPoint("BOTTOMLEFT", scroll, "BOTTOMRIGHT", 14, 0)
+	else
+		scroll = CreateFrame("ScrollFrame", ADDON .. "OptionsScroll_" .. key, win, "UIPanelScrollFrameTemplate")
+	end
+	scroll:SetPoint("TOPLEFT", win, "TOPLEFT", NAV_W + 18, -38)
+	scroll:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -40, 12)
+	local content = CreateFrame("Frame", nil, scroll)
+	content:SetSize(ROW_W, 1)
+	scroll:SetScrollChild(content)
+	scroll:Hide()
+	local page = setmetatable({ key = key, title = title, scroll = scroll, content = content, y = 0,
+		refreshers = {} }, Page)
+	pages[key] = page
+	pages[#pages + 1] = page
+	return page
 end
 
--- Buttons whose text follows the addon's state, by their row's data
-local dynamic = {}
+function Page:add(height, refresh)
+	local f = CreateFrame("Frame", nil, self.content)
+	f:SetSize(ROW_W, height)
+	f:SetPoint("TOPLEFT", 0, -self.y)
+	self.y = self.y + height
+	self.content:SetHeight(self.y)
+	if refresh then self.refreshers[#self.refreshers + 1] = refresh end
+	return f
+end
 
-function ns.refreshOptions()
-	if not SettingsPanel:IsShown() then return end
-	SettingsPanel:GetSettingsList().ScrollBox:ForEachFrame(function(frame)
-		local text = frame.data and dynamic[frame.data]
-		if text and frame.Button then frame.Button:SetText(text()) end
+function Page:refresh()
+	for _, refresh in ipairs(self.refreshers) do refresh() end
+end
+
+local function label(f, text)
+	local fs = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	fs:SetPoint("LEFT", 4, 0)
+	fs:SetWidth(LABEL_W - 8)
+	fs:SetJustifyH("LEFT")
+	fs:SetText(text)
+end
+
+function Page:section(text)
+	local f = self:add(46)
+	local fs = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	fs:SetPoint("BOTTOMLEFT", 4, 9)
+	fs:SetText(text)
+	local line = f:CreateTexture(nil, "ARTWORK")
+	line:SetColorTexture(0.85, 0.71, 0.42, 0.6)
+	line:SetHeight(1)
+	line:SetPoint("BOTTOMLEFT", 0, 3)
+	line:SetPoint("BOTTOMRIGHT", 0, 3)
+end
+
+function Page:checkbox(text, get, set)
+	local cb
+	local f = self:add(30, function() cb:SetChecked(get() and true or false) end)
+	cb = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+	cb:SetSize(26, 26)
+	cb:SetPoint("LEFT", 0, 0)
+	cb.Text:SetFontObject("GameFontHighlight")
+	cb.Text:SetText(text)
+	cb:SetScript("OnClick", function(button) set(button:GetChecked() and true or false) end)
+end
+
+-- A slider with a box to type the value in. unit: scale (shown = saved x scale), decimals, suffix
+function Page:slider(text, range, unit, get, set)
+	local slider, box
+	local updating = false
+	local function shown(v) return ("%." .. unit.decimals .. "f"):format(v * unit.scale) .. unit.suffix end
+	local f = self:add(34, function()
+		updating = true
+		slider:SetValue(get())
+		updating = false
+		if not box:HasFocus() then box:SetText(shown(get())) end
 	end)
-end
-
-function ns.buildOptions()
-	local DEFAULTS, RANGES = ns.DEFAULTS, ns.RANGES
-	category = Settings.RegisterVerticalLayoutCategory(ns.TITLE)
-	local main = { category = category, layout = SettingsPanel:GetLayout(category) }
-
-	local function subpage(name)
-		local sub = Settings.RegisterVerticalLayoutSubcategory(category, name)
-		return { category = sub, layout = SettingsPanel:GetLayout(sub) }
-	end
-
-	local function header(page, text)
-		page.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(text))
-	end
-
-	-- A button with no label beside it. text: its words, or a function giving them as the state changes
-	local function button(page, text, click)
-		local initializer = CreateSettingsButtonInitializer("", text, click, nil, false)
-		if type(text) == "function" then
-			dynamic[initializer.data] = text
-		else
-			initializer:AddSearchTags(text)
+	label(f, text)
+	slider = CreateFrame("Frame", nil, f, "MinimalSliderWithSteppersTemplate")
+	slider:SetPoint("LEFT", f, "LEFT", LABEL_W, 0)
+	slider:SetWidth(SLIDER_W)
+	slider:Init(get(), range[1], range[2], math.floor((range[2] - range[1]) / range[3] + 0.5))
+	box = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+	box:SetSize(BOX_W, 20)
+	box:SetPoint("LEFT", slider, "RIGHT", 10, 0)
+	box:SetAutoFocus(false)
+	box:SetMaxLetters(8)
+	box:SetFontObject("GameFontHighlight")
+	box:SetJustifyH("CENTER")
+	slider:RegisterCallback(MinimalSliderWithSteppersMixin.Event.OnValueChanged, function(_, v)
+		if updating then return end
+		set(v)
+		box:ClearFocus()
+		box:SetText(shown(get()))
+	end, slider)
+	box:SetScript("OnEditFocusGained", function(b)
+		b:SetText((shown(get()):gsub("[^%d%.%-]", "")))
+		b:HighlightText()
+	end)
+	box:SetScript("OnEditFocusLost", function(b)
+		b:HighlightText(0, 0)
+		b:SetText(shown(get()))
+	end)
+	box:SetScript("OnEscapePressed", box.ClearFocus)
+	box:SetScript("OnEnterPressed", function(b)
+		local n = tonumber((b:GetText():gsub(",", "."):match("%-?%d*%.?%d+")) or "")
+		if n then
+			set(n / unit.scale)
+			updating = true
+			slider:SetValue(get())
+			updating = false
 		end
-		page.layout:AddInitializer(initializer)
-	end
-
-	-- owner(): the table holding the setting now. look: the change shows on a sample
-	local function setting(page, owner, key, id, default, label, look)
-		local range = RANGES[key]
-		variables[#variables + 1] = ADDON .. "_" .. id
-		return Settings.RegisterProxySetting(page.category, ADDON .. "_" .. id, type(default), label, default,
-			function() return owner()[key] end,
-			function(value)
-				if range then
-					value = math.floor(value / range[3] + 0.5) * range[3]
-					value = ns.clamp(tonumber(("%.2f"):format(value)), range)
-				end
-				owner()[key] = value
-				ns.apply()
-				if look then ns.sample() end
-			end)
-	end
-
-	local function profile() return ns.db end
-	local function global(page, key, label, look)
-		return setting(page, profile, key, key, DEFAULTS[key], label, look)
-	end
-
-	local function check(page, option)
-		Settings.CreateCheckbox(page.category, option)
-	end
-
-	local function swatch(page, key, label)
-		Settings.CreateColorSwatch(page.category, global(page, key, label))
-	end
-
-	local function dropdown(page, option, choices)
-		Settings.CreateDropdown(page.category, option, function()
-			local container = Settings.CreateControlTextContainer()
-			for _, choice in ipairs(choices()) do container:Add(choice[1], choice[2]) end
-			return container:GetData()
-		end)
-	end
-
-	-- typed: how the value reads in the slider's box
-	local function slider(page, option, key, typed)
-		local range = RANGES[key]
-		local options = Settings.CreateSliderOptions(range[1], range[2], range[3])
-		options.typed = typed
-		page.layout:AddInitializer(Settings.CreateControlInitializer(ADDON .. "SliderTemplate", option, options))
-	end
-
-	local whole = { scale = 1, decimals = 0, unit = "" }
-	local percent = { scale = 100, decimals = 0, unit = "%" }
-	local seconds = { scale = 1, decimals = 2, unit = "s" }
-	local times = { scale = 1, decimals = 2, unit = "x" }
-
-	-- The main page
-	button(main, function() return ns.unlocked and "Lock positioning" or "Unlock positioning" end, function()
-		ns.setUnlocked(not ns.unlocked)
+		b:ClearFocus()
 	end)
-	button(main, function() return ns.previewing and "Stop preview" or "Show preview" end, function()
-		ns.preview(not ns.previewing and "each" or nil)
-	end)
+end
 
-	header(main, "Show on")
+-- choices: a list of { value, text }, or a function giving one
+function Page:dropdown(text, choices, get, set)
+	local dd
+	local f = self:add(34, function()
+		if not dd:IsMenuOpen() then dd:GenerateMenu() end
+	end)
+	label(f, text)
+	dd = CreateFrame("DropdownButton", nil, f, "WowStyle1DropdownTemplate")
+	dd:SetPoint("LEFT", f, "LEFT", LABEL_W, 0)
+	dd:SetWidth(200)
+	dd:SetupMenu(function(_, root)
+		root:SetScrollMode(400)
+		for _, c in ipairs(type(choices) == "function" and choices() or choices) do
+			root:CreateRadio(c[2], function() return get() == c[1] end, function() set(c[1]) end)
+		end
+	end)
+end
+
+-- A colour saved as "ffrrggbb"
+function Page:color(text, key)
+	local swatch
+	local function rgb()
+		local hex = ns.db[key]
+		return tonumber(hex:sub(3, 4), 16) / 255, tonumber(hex:sub(5, 6), 16) / 255, tonumber(hex:sub(7, 8), 16) / 255
+	end
+	local function set(r, g, b)
+		local function byte(v) return math.floor(v * 255 + 0.5) end
+		ns.set(nil, key, ("ff%02x%02x%02x"):format(byte(r), byte(g), byte(b)))
+		swatch:SetColorTexture(r, g, b, 1)
+	end
+	local f = self:add(30, function() swatch:SetColorTexture(rgb()) end)
+	label(f, text)
+	local b = CreateFrame("Button", nil, f, "BackdropTemplate")
+	b:SetSize(22, 22)
+	b:SetPoint("LEFT", f, "LEFT", LABEL_W, 0)
+	b:SetBackdrop(ns.BACKDROP)
+	b:SetBackdropColor(0.5, 0.5, 0.5, 1)
+	b:SetBackdropBorderColor(1, 1, 1, 0.6)
+	swatch = b:CreateTexture(nil, "ARTWORK")
+	swatch:SetPoint("TOPLEFT", 2, -2)
+	swatch:SetPoint("BOTTOMRIGHT", -2, 2)
+	b:SetScript("OnClick", function()
+		local r, g, bl = rgb()
+		ColorPickerFrame:SetupColorPickerAndShow({
+			r = r, g = g, b = bl, hasOpacity = false,
+			swatchFunc = function() set(ColorPickerFrame:GetColorRGB()) end,
+			cancelFunc = function(prev) set(prev.r, prev.g, prev.b) end,
+		})
+	end)
+end
+
+-- list: { text, onClick, width } each
+function Page:buttons(list)
+	local f = self:add(32)
+	local x = 0
+	for _, b in ipairs(list) do
+		local button = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+		button:SetSize(b[3] or 110, 22)
+		button:SetPoint("LEFT", x, 0)
+		button:SetText(b[1])
+		button:SetScript("OnClick", b[2])
+		x = x + (b[3] or 110) + 6
+	end
+end
+
+-- The pages
+
+local WHOLE = { scale = 1, decimals = 0, suffix = "" }
+local PERCENT = { scale = 100, decimals = 0, suffix = "%" }
+local SECONDS = { scale = 1, decimals = 2, suffix = " s" }
+local TIMES = { scale = 1, decimals = 2, suffix = "x" }
+
+-- A profile setting's row. unit: a box's own setting. look: the change shows on a sample
+local function getter(key, unit)
+	return function() return (unit and ns.db[unit] or ns.db)[key] end
+end
+local function setter(key, unit, look)
+	return function(value) ns.set(unit, key, value, look) end
+end
+
+local function buildGeneral(p)
+	p:section("Show on")
 	local shown = { player = "Player", target = "Target (hits from anyone)", pet = "Pet" }
 	local sized = { player = "Player text size", target = "Target text size", pet = "Pet text size" }
 	for _, spec in ipairs(ns.UNITS) do
 		local unit = spec.unit
-		local function owner() return ns.db[unit] end
-		check(main, setting(main, owner, "on", unit .. "_on", spec.on, shown[unit]))
-		slider(main, setting(main, owner, "size", unit .. "_size", spec.size, sized[unit], true), "size", whole)
+		p:checkbox(shown[unit], getter("on", unit), setter("on", unit))
+		p:slider(sized[unit], ns.RANGES.size, WHOLE, getter("size", unit), setter("size", unit, true))
 	end
 
-	header(main, "Text")
-	dropdown(main, global(main, "font", "Font", true), function()
+	p:section("Text")
+	p:dropdown("Font", function()
 		local choices = { { "", "Original" } }
 		for _, name in ipairs(ns.fonts()) do choices[#choices + 1] = { name, name } end
 		return choices
+	end, getter("font"), setter("font", nil, true))
+	p:dropdown("Outline", { { "", "None" }, { "OUTLINE", "Outline" }, { "THICKOUTLINE", "Thick outline" } },
+		getter("outline"), setter("outline", nil, true))
+	p:checkbox("Shadow", getter("shadow"), setter("shadow", nil, true))
+	p:slider("Opacity", ns.RANGES.alpha, PERCENT, getter("alpha"), setter("alpha", nil, true))
+	p:slider("Time shown", ns.RANGES.hold, SECONDS, getter("hold"), setter("hold"))
+	p:slider("Critical hit and heal size", ns.RANGES.crit, TIMES, getter("crit"), setter("crit", nil, true))
+	p:dropdown("Number format", { { "FULL", "1,412" }, { "PLAIN", "1412" }, { "SHORT", "1.4k" } },
+		getter("numbers"), setter("numbers", nil, true))
+	p:checkbox("Plus and minus signs", getter("signs"), setter("signs", nil, true))
+
+	p:section("Other")
+	p:checkbox("Minimap button", function() return not ns.acct.minimap.hide end, function(value)
+		ns.acct.minimap.hide = not value
+		ns.applyMinimap()
 	end)
-	dropdown(main, global(main, "outline", "Outline", true), function()
-		return { { "", "None" }, { "OUTLINE", "Outline" }, { "THICKOUTLINE", "Thick outline" } }
-	end)
-	check(main, global(main, "shadow", "Shadow", true))
-	slider(main, global(main, "alpha", "Opacity", true), "alpha", percent)
-	slider(main, global(main, "hold", "Time shown"), "hold", seconds)
-	slider(main, global(main, "crit", "Critical hit and heal size", true), "crit", times)
-	dropdown(main, global(main, "numbers", "Number format", true), function()
-		return { { "FULL", "1,412" }, { "PLAIN", "1412" }, { "SHORT", "1.4k" } }
-	end)
-	check(main, global(main, "signs", "Plus and minus signs", true))
+end
 
-	header(main, "Minimap")
-	variables[#variables + 1] = ADDON .. "_minimap"
-	check(main, Settings.RegisterProxySetting(category, ADDON .. "_minimap", "boolean", "Minimap button", true,
-		function() return not ns.acct.minimap.hide end,
-		function(value)
-			ns.acct.minimap.hide = not value
-			ns.applyMinimap()
-		end))
+local function buildEvents(p)
+	p:section("Damage")
+	p:checkbox("Show damage", getter("damage"), setter("damage"))
+	p:slider("Hide damage under", ns.RANGES.minDamage, WHOLE, getter("minDamage"), setter("minDamage"))
+	p:color("Physical damage colour", "colorPhysical")
+	p:color("Spell damage colour", "colorSpell")
+	p:checkbox("Colour spell damage by school", getter("schools"), setter("schools"))
 
-	-- Events: each kind of text with its own settings
-	local events = subpage("Events")
-	header(events, "Damage")
-	check(events, global(events, "damage", "Show damage"))
-	slider(events, global(events, "minDamage", "Hide damage under"), "minDamage", whole)
-	swatch(events, "colorPhysical", "Physical damage colour")
-	swatch(events, "colorSpell", "Spell damage colour")
-	check(events, global(events, "schools", "Colour spell damage by school"))
+	p:section("Heals")
+	p:checkbox("Show heals", getter("heals"), setter("heals"))
+	p:slider("Hide heals under", ns.RANGES.minHeal, WHOLE, getter("minHeal"), setter("minHeal"))
+	p:color("Heal colour", "colorHeal")
 
-	header(events, "Heals")
-	check(events, global(events, "heals", "Show heals"))
-	slider(events, global(events, "minHeal", "Hide heals under"), "minHeal", whole)
-	swatch(events, "colorHeal", "Heal colour")
+	p:section("Misses, dodges, blocks and resists")
+	p:checkbox("Show them", getter("avoids"), setter("avoids"))
+	p:color("Their colour", "colorAvoid")
 
-	header(events, "Misses, dodges, blocks and resists")
-	check(events, global(events, "avoids", "Show them"))
-	swatch(events, "colorAvoid", "Their colour")
+	p:section("Mana, rage and energy gains")
+	p:checkbox("Show gains", getter("gains"), setter("gains"))
+	p:slider("Hide gains under", ns.RANGES.minGain, WHOLE, getter("minGain"), setter("minGain"))
+	p:color("Gain colour", "colorGain")
+end
 
-	header(events, "Mana, rage and energy gains")
-	check(events, global(events, "gains", "Show gains"))
-	slider(events, global(events, "minGain", "Hide gains under"), "minGain", whole)
-	swatch(events, "colorGain", "Gain colour")
-
-	-- Profiles
-	local profiles = subpage("Profiles")
-	variables[#variables + 1] = ADDON .. "_profile"
-	dropdown(profiles, Settings.RegisterProxySetting(profiles.category, ADDON .. "_profile", "string", "Profile",
-		"Default", ns.profileName, ns.useProfile), function()
+local function buildProfiles(p)
+	p:section("Profile")
+	p:dropdown("Profile", function()
 		local choices = {}
 		for _, name in ipairs(ns.profileNames()) do choices[#choices + 1] = { name, name } end
 		return choices
-	end)
-	button(profiles, "New profile (a copy)", function()
-		askName("Name for the new profile:", "", ns.newProfile)
-	end)
-	button(profiles, "Rename profile", function()
-		if ns.profileName() == "Default" then return print("The Default profile keeps its name.") end
-		askName("New name for " .. ns.profileName() .. ":", ns.profileName(), ns.renameProfile)
-	end)
-	button(profiles, "Reset profile", function()
-		confirm("Reset the profile " .. ns.profileName() .. "?", ns.resetProfile)
-	end)
-	button(profiles, "Delete profile", function()
-		if ns.profileName() == "Default" then return print("The Default profile can't be deleted.") end
-		confirm("Delete the profile " .. ns.profileName() .. "?", ns.deleteProfile)
-	end)
-	button(profiles, "Export profile", function() showShare("export") end)
-	button(profiles, "Import profile", function() showShare("import") end)
+	end, ns.profileName, ns.useProfile)
+	p:buttons({
+		{ "New (a copy)", function() askName("Name for the new profile:", "", ns.newProfile) end },
+		{ "Rename", function()
+			if ns.profileName() == "Default" then return print("The Default profile keeps its name.") end
+			askName("New name for " .. ns.profileName() .. ":", ns.profileName(), ns.renameProfile)
+		end },
+		{ "Reset to defaults", function()
+			confirm("Reset the profile " .. ns.profileName() .. " to defaults?", ns.resetProfile)
+		end, 130 },
+		{ "Delete", function()
+			if ns.profileName() == "Default" then return print("The Default profile can't be deleted.") end
+			confirm("Delete the profile " .. ns.profileName() .. "?", ns.deleteProfile)
+		end },
+	})
+	p:section("Share")
+	p:buttons({
+		{ "Export", function() showShare("export") end },
+		{ "Import", function() showShare("import") end },
+	})
+end
 
-	Settings.RegisterAddOnCategory(category)
+-- The window
+
+local function showPage(key)
+	current = key
+	for _, p in ipairs(pages) do p.scroll:SetShown(p.key == key) end
+	ns.refreshOptions()
+end
+
+local function navButton(text, y, onClick)
+	local b = CreateFrame("Button", nil, win)
+	b:SetSize(NAV_W - 20, 28)
+	b:SetPoint("TOPLEFT", 12, y)
+	b.sel = b:CreateTexture(nil, "BACKGROUND")
+	b.sel:SetAllPoints()
+	b.sel:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.16)
+	b.accent = b:CreateTexture(nil, "ARTWORK")
+	b.accent:SetPoint("TOPLEFT", -8, -4)
+	b.accent:SetPoint("BOTTOMLEFT", -8, 4)
+	b.accent:SetWidth(3)
+	b.accent:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+	local hover = b:CreateTexture(nil, "HIGHLIGHT")
+	hover:SetAllPoints()
+	hover:SetColorTexture(1, 1, 1, 0.05)
+	b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	b.label:SetPoint("LEFT", 8, 0)
+	b.label:SetText(text)
+	b:SetScript("OnClick", onClick)
+	return b
+end
+
+local function build()
+	win = CreateFrame("Frame", ADDON .. "Options", UIParent, "ButtonFrameTemplate")
+	ButtonFrameTemplate_HideButtonBar(win)
+	ButtonFrameTemplate_HidePortrait(win)
+	if win.Inset then win.Inset:Hide() end
+	if win.SetTitle then win:SetTitle(ns.TITLE) end
+	win:SetSize(WIDTH, HEIGHT)
+	local acct = ns.acct
+	if acct.optionsLeft and acct.optionsTop then
+		win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", acct.optionsLeft, acct.optionsTop)
+	else
+		win:SetPoint("CENTER")
+	end
+	win:SetFrameStrata("DIALOG")
+	win:SetToplevel(true)
+	win:SetClampedToScreen(true)
+	win:SetMovable(true)
+	win:EnableMouse(true)
+	win:RegisterForDrag("LeftButton")
+	win:SetScript("OnDragStart", win.StartMoving)
+	win:SetScript("OnDragStop", function()
+		win:StopMovingOrSizing()
+		acct.optionsLeft, acct.optionsTop = math.floor(win:GetLeft() + 0.5), math.floor(win:GetTop() + 0.5)
+	end)
+	table.insert(UISpecialFrames, win:GetName())
+
+	local bg = win:CreateTexture(nil, "BACKGROUND", nil, 2)
+	bg:SetPoint("TOPLEFT", 2, -22)
+	bg:SetPoint("BOTTOMRIGHT", -2, 2)
+	bg:SetColorTexture(23 / 255, 19 / 255, 15 / 255, 0.97)
+	local navBg = win:CreateTexture(nil, "BACKGROUND", nil, 3)
+	navBg:SetPoint("TOPLEFT", bg, "TOPLEFT")
+	navBg:SetPoint("BOTTOMLEFT", bg, "BOTTOMLEFT")
+	navBg:SetWidth(NAV_W)
+	navBg:SetColorTexture(0, 0, 0, 0.25)
+	local navEdge = win:CreateTexture(nil, "BACKGROUND", nil, 4)
+	navEdge:SetPoint("TOPLEFT", navBg, "TOPRIGHT")
+	navEdge:SetPoint("BOTTOMLEFT", navBg, "BOTTOMRIGHT")
+	navEdge:SetWidth(1)
+	navEdge:SetColorTexture(0.23, 0.17, 0.10, 1)
+	local logo = win:CreateTexture(nil, "OVERLAY")
+	logo:SetSize(64, 64)
+	logo:SetPoint("TOPLEFT", -12, 14)
+	logo:SetTexture("Interface\\AddOns\\" .. ADDON .. "\\Art\\Logo")
+
+	pages, navButtons = {}, {}
+	for i, spec in ipairs({ { "general", "General", buildGeneral }, { "events", "Events", buildEvents },
+		{ "profiles", "Profiles", buildProfiles } }) do
+		spec[3](newPage(spec[1], spec[2]))
+		local b = navButton(spec[2], -52 - (i - 1) * 30, function() showPage(spec[1]) end)
+		b.page = spec[1]
+		navButtons[i] = b
+	end
+
+	-- The two modes, under the pages
+	local function mode(y, text, onClick)
+		local b = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
+		b:SetSize(NAV_W - 24, 22)
+		b:SetPoint("BOTTOMLEFT", 14, y)
+		b:SetScript("OnClick", onClick)
+		b.text = text
+		return b
+	end
+	win.modes = {
+		mode(40, function() return ns.unlocked and "Lock positioning" or "Unlock positioning" end, function()
+			ns.setUnlocked(not ns.unlocked)
+		end),
+		mode(14, function() return ns.previewing and "Stop preview" or "Show preview" end, function()
+			ns.preview(not ns.previewing and "each" or nil)
+		end),
+	}
+	win:Hide()
+	showPage("general")
+end
+
+-- The page in view shows every value again
+function ns.refreshOptions()
+	if not win then return end
+	for _, b in ipairs(navButtons) do
+		local on = b.page == current
+		b.sel:SetShown(on)
+		b.accent:SetShown(on)
+	end
+	for _, b in ipairs(win.modes) do b:SetText(b.text()) end
+	pages[current]:refresh()
+end
+ns.profileChanged = ns.refreshOptions
+
+function ns.openOptions()
+	if not win then build() end
+	win:SetShown(not win:IsShown())
+	ns.refreshOptions()
 end
