@@ -665,6 +665,7 @@ loader:SetScript("OnEvent", function(_, event)
 	local saved = acct.chars[charKey()]
 	ns.useProfile(saved and saved.profile or DEFAULT_PROFILE)
 	ns.applyMinimap()
+	ns.registerOptionsEntry()
 	_G["SLASH_" .. ADDON:upper() .. "1"] = "/pct"
 	_G["SLASH_" .. ADDON:upper() .. "2"] = "/ipct"
 	SlashCmdList[ADDON:upper()] = command

@@ -593,3 +593,15 @@ function ns.openOptions()
 	win:SetShown(not win:IsShown())
 	ns.refreshOptions()
 end
+
+-- A page in the game's addon settings list, with one button that opens the window
+function ns.registerOptionsEntry()
+	local category = Settings.RegisterVerticalLayoutCategory(ns.TITLE)
+	local initializer = CreateSettingsButtonInitializer("", "Open the options", function()
+		HideUIPanel(SettingsPanel)
+		if not (win and win:IsShown()) then ns.openOptions() end
+	end, nil, false)
+	initializer:AddSearchTags(ns.TITLE)
+	SettingsPanel:GetLayout(category):AddInitializer(initializer)
+	Settings.RegisterAddOnCategory(category)
+end
