@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 (2026-10-04)
 
 - The options are now the addon's own window, opened with /pct or the minimap button, in place of
   pages in the game's settings. The game's addon list keeps a button that opens it.
